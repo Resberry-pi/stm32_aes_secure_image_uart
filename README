@@ -1,17 +1,17 @@
-<div align="center">
+<p align="center">
+  <img src="https://img.shields.io/badge/MCU-STM32F407VETx-03234B?style=for-the-badge&logo=stmicroelectronics&logoColor=white" alt="MCU"/>
+  <img src="https://img.shields.io/badge/AES-128--CBC-success?style=for-the-badge" alt="AES"/>
+  <img src="https://img.shields.io/badge/RNG-Hardware%20On--Chip-blue?style=for-the-badge" alt="RNG"/>
+  <img src="https://img.shields.io/badge/Language-Embedded%20C%20%2B%20Python-yellow?style=for-the-badge" alt="Lang"/>
+  <img src="https://img.shields.io/badge/AES%20Lib-Public%20Domain-lightgrey?style=for-the-badge" alt="License"/>
+</p>
 
-# AES-128 Secure Image Transmission
-### STM32F407VETx — Bare-Metal Embedded Cryptography
+<h1 align="center">AES-128 Secure Image Transmission</h1>
+<h3 align="center">STM32F407VETx — Bare-Metal Embedded Cryptography</h3>
 
-[![MCU](https://img.shields.io/badge/MCU-STM32F407VETx-03234B?style=for-the-badge&logo=stmicroelectronics&logoColor=white)](https://www.st.com)
-[![AES](https://img.shields.io/badge/AES-128--CBC-success?style=for-the-badge)](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard)
-[![RNG](https://img.shields.io/badge/RNG-Hardware%20On--Chip-blue?style=for-the-badge)]()
-[![Lang](https://img.shields.io/badge/Language-Embedded%20C%20%2B%20Python-yellow?style=for-the-badge)]()
-[![License](https://img.shields.io/badge/AES%20Lib-Public%20Domain-lightgrey?style=for-the-badge)]()
-
-*A two-stage progression from basic ECB block cipher learning to a complete hardware-RNG-keyed AES-CBC secure image transmission system — all running on bare-metal ARM Cortex-M4, no OS, no cloud.*
-
-</div>
+<p align="center">
+  <em>A two-stage progression from basic ECB block cipher learning to a complete hardware-RNG-keyed AES-CBC secure image transmission system — all running on bare-metal ARM Cortex-M4, no OS, no cloud.</em>
+</p>
 
 ---
 
@@ -28,7 +28,7 @@
 
 ---
 
-## 🛠 Hardware
+## Hardware
 
 | Component | Details |
 |---|---|
@@ -41,6 +41,13 @@
 | **GPIO** | PA6, PA7 — status indicators |
 | **Debug** | SWD — PA13 (SWDIO), PA14 (SWCLK) |
 | **Firmware** | STM32Cube FW_F4 V1.28.3 |
+
+<!--
+  TIP: Add a photo of your hardware setup here.
+  Place the image in a /docs/images/ folder in your repo, then replace the line below:
+
+  ![Hardware Setup](docs/images/hardware_setup.jpg)
+-->
 
 ---
 
@@ -75,7 +82,7 @@ stm32_aes_secure_image_uart/
 
 ---
 
-##  Stage 1 — AES-128 ECB Demo
+## Stage 1 — AES-128 ECB Demo
 
 > Minimal proof-of-concept to establish baseline understanding of the AES block cipher on embedded hardware.
 
@@ -98,7 +105,7 @@ stm32_aes_secure_image_uart/
  │   AES-128 ECB Decrypt                   │
  │         │                               │
  │         ▼                               │
- │   Recovered Plaintext ✓                 │
+ │   Recovered Plaintext                  │
  │         │                               │
  └─────────┼───────────────────────────────┘
            │ USART2 @ 115200 baud
@@ -106,6 +113,11 @@ stm32_aes_secure_image_uart/
       PC Terminal
   [Original] → [Encrypted] → [Decrypted]
 ```
+
+<!--
+  TIP: Add a UART terminal screenshot here, e.g.:
+  ![ECB UART Output](docs/images/ecb_uart_output.png)
+-->
 
 ### Parameters
 
@@ -116,11 +128,11 @@ stm32_aes_secure_image_uart/
 | Block size | 16 bytes |
 | UART | 115200 baud |
 
->  **ECB is intentionally used here for learning only.** ECB encrypts each block independently — identical plaintext always produces identical ciphertext, leaking data patterns. Stage 2 fixes this with CBC.
+> ️ **ECB is intentionally used here for learning only.** ECB encrypts each block independently — identical plaintext always produces identical ciphertext, leaking data patterns. Stage 2 fixes this with CBC.
 
 ---
 
-##  Stage 2 — Secure Image Sender
+## Stage 2 — Secure Image Sender
 
 > Complete embedded-to-host secure data link with hardware-generated keys, AES-CBC encryption, and Python-based image reconstruction.
 
@@ -167,9 +179,14 @@ stm32_aes_secure_image_uart/
  │      │                                          │
  │      ▼                                          │
  │  numpy.unpackbits ──► 76800 pixels              │
- │  Reshape ──► 320×240 ──► PNG saved ✓            │
+ │  Reshape ──► 320×240 ──► PNG saved             │
  └─────────────────────────────────────────────────┘
 ```
+
+<!--
+  TIP: Add the reconstructed output image here, e.g.:
+  ![Decrypted Image Output](docs/images/decrypted_output.png)
+-->
 
 ### Parameters
 
@@ -182,7 +199,7 @@ stm32_aes_secure_image_uart/
 | Stream format | KEY → IV → CIPHERTEXT (raw binary) |
 | UART | 115200 baud |
 
-###  Why Hardware RNG?
+### Why Hardware RNG?
 
 The STM32F407 has a dedicated **on-chip hardware RNG peripheral** sourcing entropy from analog noise in the silicon:
 
@@ -191,7 +208,7 @@ The STM32F407 has a dedicated **on-chip hardware RNG peripheral** sourcing entro
 -  Fresh unique key + IV on every power-on
 -  No two transmissions are ever identical
 
-###  Why CBC over ECB?
+### Why CBC over ECB?
 
 CBC XORs each plaintext block with the previous ciphertext block before encrypting — identical plaintext blocks produce **completely different ciphertext**. The image structure is fully hidden in the encrypted stream.
 
@@ -217,7 +234,7 @@ python receiver.py --port COM3 --output decrypted_image.png  # custom name
 
 ---
 
-##  Third Party
+## Third Party
 
 | Library | Source | License |
 |---|---|---|
@@ -225,15 +242,18 @@ python receiver.py --port COM3 --output decrypted_image.png  # custom name
 
 ---
 
-<div align="center">
-
-##  Author
+## Author
 
 **Rohan Kumar Singh**
 B.Tech ECE — Babasaheb Bhimrao Ambedkar University, Lucknow
 Embedded Systems Intern — BIT Mesra (2025)
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge&logo=linkedin)](https://linkedin.com/in/your-link)
-[![Email](https://img.shields.io/badge/Email-rohankumar17362@gmail.com-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:rohankumar17362@gmail.com)
-
-</div>
+<p>
+  <a href="https://linkedin.com/in/YOUR_LINKEDIN_ID">
+    <img src="https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge&logo=linkedin" alt="LinkedIn"/>
+  </a>
+  &nbsp;
+  <a href="mailto:rohankumar17362@gmail.com">
+    <img src="https://img.shields.io/badge/Email-rohankumar17362@gmail.com-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email"/>
+  </a>
+</p>
