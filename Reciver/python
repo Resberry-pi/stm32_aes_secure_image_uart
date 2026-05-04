@@ -1,0 +1,98 @@
+"""
+AES-128 CBC Secure Image Receiver
+===================================
+Receives encrypted image stream from STM32F407 over UART.
+
+Stream protocol (binary):
+  [16 bytes]  AES-128 Key  (hardware RNG generated on STM32)
+  [16 bytes]  AES-128 IV   (hardware RNG generated on STM32)
+  [9600 bytes] AES-CBC Encrypted image data
+
+Image format: 320x240 monochrome (1-bit per pixel, packed into bytes)
+Total pixels: 76800 -> packed into 9600 bytes (76800 / 8)
+
+Requirements:
+    pip install pyserial pycryptodome pillow numpy
+
+Usage:
+    python receiver.py --port COM3          (Windows)
+    python receiver.py --port /dev/ttyUSB0  (Linux)
+"""
+
+import serial
+import argparse
+import numpy as np
+from PIL import Image
+from Crypto.Cipher import AES
+
+# ─── Constants ────────────────────────────────────────────────────────────────
+
+IMAGE_WIDTH  = 320
+IMAGE_HEIGHT = 240
+IMAGE_BYTES  = IMAGE_WIDTH * IMAGE_HEIGHT // 8   # 9600 bytes (1-bit packed)
+KEY_SIZE     = 16
+IV_SIZE      = 16
+BAUD_RATE    = 115200
+
+# ─── Argument Parser ──────────────────────────────────────────────────────────
+
+parser = argparse.ArgumentParser(description="AES-128 CBC Secure Image Receiver")
+parser.add_argument("--port", required=True, help="Serial port (e.g. COM3 or /dev/ttyUSB0)")
+parser.add_argument("--output", default="received_image.png", help="Output image filename")
+args = parser.parse_args()
+
+# ─── Serial Receive ───────────────────────────────────────────────────────────
+
+print(f"[*] Opening port {args.port} at {BAUD_RATE} baud...")
+
+with serial.Serial(args.port, BAUD_RATE, timeout=10) as ser:
+
+    print("[*] Waiting for stream from STM32...")
+
+    # Step 1: Read KEY
+    key = ser.read(KEY_SIZE)
+    if len(key) != KEY_SIZE:
+        raise RuntimeError(f"Expected {KEY_SIZE} bytes for KEY, got {len(key)}")
+    print(f"[+] KEY received : {key.hex()}")
+
+    # Step 2: Read IV
+    iv = ser.read(IV_SIZE)
+    if len(iv) != IV_SIZE:
+        raise RuntimeError(f"Expected {IV_SIZE} bytes for IV, got {len(iv)}")
+    print(f"[+] IV  received : {iv.hex()}")
+
+    # Step 3: Read encrypted image
+    ciphertext = ser.read(IMAGE_BYTES)
+    if len(ciphertext) != IMAGE_BYTES:
+        raise RuntimeError(f"Expected {IMAGE_BYTES} bytes for image, got {len(ciphertext)}")
+    print(f"[+] Ciphertext received : {len(ciphertext)} bytes")
+
+# ─── AES-128 CBC Decrypt ──────────────────────────────────────────────────────
+
+print("[*] Decrypting...")
+cipher    = AES.new(key, AES.MODE_CBC, iv)
+plaintext = cipher.decrypt(ciphertext)
+print(f"[+] Decrypted : {len(plaintext)} bytes")
+
+# ─── Reconstruct Image ────────────────────────────────────────────────────────
+
+print("[*] Reconstructing image...")
+
+# Unpack 1-bit pixels from bytes -> flat array of 76800 pixels (0 or 1)
+pixel_bits = np.unpackbits(np.frombuffer(plaintext, dtype=np.uint8))
+
+# Take exactly WIDTH x HEIGHT pixels
+pixel_bits = pixel_bits[:IMAGE_WIDTH * IMAGE_HEIGHT]
+
+# Scale to 8-bit grayscale: 0 -> 0 (black), 1 -> 255 (white)
+pixels = (pixel_bits * 255).astype(np.uint8)
+
+# Reshape to 2D image
+image_array = pixels.reshape((IMAGE_HEIGHT, IMAGE_WIDTH))
+
+# Save as PNG
+img = Image.fromarray(image_array, mode='L')
+img.save(args.output)
+
+print(f"[+] Image saved  : {args.output} ({IMAGE_WIDTH}x{IMAGE_HEIGHT})")
+print("[✓] Done.")
