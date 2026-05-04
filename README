@@ -1,0 +1,173 @@
+# AES-128 Secure Image Transmission — STM32F407
+
+> **Two-stage AES encryption project on bare-metal STM32F407 — progressing from basic ECB block cipher to a full hardware-RNG-keyed CBC image transmission system over UART.**
+
+---
+
+## Project Structure
+
+```
+stm32_aes_secure_image_uart/
+├── 01_AES_ECB_Demo/        — Stage 1: basic AES-128 ECB encrypt/decrypt
+│   ├── Src/
+│   │   ├── main.c
+│   │   └── aes.c
+│   └── Inc/
+│       ├── main.h
+│       └── aes.h
+└── 02_Secure_Image_Sender/  — Stage 2: hardware RNG + CBC image transmission
+    ├── Src/
+    │   ├── main.c
+    │   ├── aes.c
+    │   └── image_data.c
+    └── Inc/
+        ├── main.h
+        ├── aes.h
+        └── image_data.h
+```
+
+---
+
+## Hardware
+
+| Component | Details |
+|---|---|
+| MCU | STM32F407 (ARM Cortex-M4 @ 168 MHz) |
+| SRAM | 192 kB |
+| Flash | 512 kB |
+| RNG | On-chip hardware random number generator |
+| Interface | USART2 — 115200 baud, binary protocol |
+
+---
+
+## Stage 1 — AES-128 ECB Demo
+
+A minimal proof-of-concept establishing baseline understanding of the AES block cipher on embedded hardware.
+
+### What It Does
+
+```
+Plaintext (16 bytes)
+        │
+        ▼
+  AES-128 ECB Encrypt  ← key: "STM32CryptoKey!!"
+        │
+        ▼
+  Ciphertext (16 bytes)
+        │
+        ▼
+  AES-128 ECB Decrypt
+        │
+        ▼
+  Recovered Plaintext
+        │
+        ▼
+  USART2 → PC terminal (original / encrypted / decrypted)
+```
+
+### Key Parameters
+
+| Parameter | Value |
+|---|---|
+| AES mode | ECB (Electronic Codebook) |
+| Key length | 128-bit (16 bytes) |
+| Block size | 16 bytes |
+| Baud rate | 115200 |
+
+> **Note:** ECB mode encrypts each block independently — identical plaintext produces identical ciphertext. Intentionally used here for learning; CBC mode is used in Stage 2 for real security.
+
+---
+
+## Stage 2 — Secure Image Sender
+
+A complete embedded-to-host secure data link — fresh cryptographic key and IV generated on every power-on, image encrypted in CBC mode, streamed over UART, and reconstructed on the host.
+
+### What It Does
+
+```
+Power-On
+    │
+    ▼
+Hardware RNG → 128-bit AES Key (random, unique per boot)
+Hardware RNG → 128-bit IV     (random, unique per boot)
+    │
+    ▼
+image_data[] (320×240 monochrome bitmap, 9600 bytes in Flash)
+    │
+    ▼
+memcpy → RAM tx_buffer
+    │
+    ▼
+AES-128 CBC Encrypt (key + IV)
+    │
+    ▼
+UART Binary Stream:
+  [16 bytes KEY] → [16 bytes IV] → [9600 bytes CIPHERTEXT]
+    │
+    ▼
+Python Receiver (host PC)
+  ├── Extract KEY (first 16 bytes)
+  ├── Extract IV  (next 16 bytes)
+  ├── AES-CBC Decrypt remaining bytes
+  └── Reconstruct 320×240 bitmap → image file
+```
+
+### Key Parameters
+
+| Parameter | Value |
+|---|---|
+| AES mode | CBC (Cipher Block Chaining) |
+| Key length | 128-bit — hardware RNG generated |
+| IV | 128-bit — hardware RNG generated |
+| Image size | 9,600 bytes (320×240 × 1-bit monochrome) |
+| Stream format | KEY → IV → CIPHERTEXT (binary) |
+| Baud rate | 115200 |
+
+### Why CBC over ECB?
+
+CBC chains each block's encryption to the previous ciphertext block via XOR before encrypting. This means identical plaintext blocks produce different ciphertext — the image structure is completely hidden. Combined with a hardware-RNG key and IV that change every boot, no two transmissions are ever the same.
+
+### Why Hardware RNG?
+
+The STM32F407 has a dedicated on-chip RNG peripheral that sources entropy from analog noise in the silicon. This eliminates the need for a hardcoded or software-derived key — every power cycle produces a cryptographically fresh key and IV with no predictable pattern.
+
+---
+
+## Python Receiver
+
+> **Note:** The Python receiver script was lost due to a system reinstall. The protocol is fully documented above — the receiver reads the first 16 bytes as the AES key, the next 16 bytes as the IV, and decrypts the remaining stream using AES-128 CBC to reconstruct the original bitmap.
+
+A compatible receiver can be implemented in ~30 lines using `pyserial` and `pycryptodome`:
+
+```python
+import serial
+from Crypto.Cipher import AES
+
+ser = serial.Serial('COMx', 115200)
+
+key  = ser.read(16)
+iv   = ser.read(16)
+data = ser.read(9600)
+
+cipher = AES.new(key, AES.MODE_CBC, iv)
+plain  = cipher.decrypt(data)
+
+# Unpack 1-bit pixels → 320×240 image
+```
+
+---
+
+## Third Party
+
+**tiny-AES-c**
+Source: https://github.com/kokke/tiny-AES-c
+License: The Unlicense (public domain)
+Used for: AES-128 ECB/CBC software implementation on both stages.
+
+---
+
+## Author
+
+**Rohan Kumar Singh** — B.Tech ECE, Babasaheb Bhimrao Ambedkar University, Lucknow
+Embedded Systems Intern, BIT Mesra (2025)
+[LinkedIn](https://linkedin.com/in/your-link) | rohankumar17362@gmail.com
