@@ -1,199 +1,239 @@
-# AES-128 Secure Image Transmission — STM32F407
+<div align="center">
 
-> **Two-stage AES encryption project on bare-metal STM32F407 — progressing from basic ECB block cipher to a full hardware-RNG-keyed CBC image transmission system over UART.**
+# AES-128 Secure Image Transmission
+### STM32F407VETx — Bare-Metal Embedded Cryptography
 
----
+[![MCU](https://img.shields.io/badge/MCU-STM32F407VETx-03234B?style=for-the-badge&logo=stmicroelectronics&logoColor=white)](https://www.st.com)
+[![AES](https://img.shields.io/badge/AES-128--CBC-success?style=for-the-badge)](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard)
+[![RNG](https://img.shields.io/badge/RNG-Hardware%20On--Chip-blue?style=for-the-badge)]()
+[![Lang](https://img.shields.io/badge/Language-Embedded%20C%20%2B%20Python-yellow?style=for-the-badge)]()
+[![License](https://img.shields.io/badge/AES%20Lib-Public%20Domain-lightgrey?style=for-the-badge)]()
 
-## Project Structure
+*A two-stage progression from basic ECB block cipher learning to a complete hardware-RNG-keyed AES-CBC secure image transmission system — all running on bare-metal ARM Cortex-M4, no OS, no cloud.*
 
-```
-stm32_aes_secure_image_uart/
-├── 01_AES_ECB_Demo/        — Stage 1: basic AES-128 ECB encrypt/decrypt
-│   ├── Src/
-│   │   ├── main.c
-│   │   └── aes.c
-│   └── Inc/
-│       ├── main.h
-│       └── aes.h
-└── 02_Secure_Image_Sender/  — Stage 2: hardware RNG + CBC image transmission
-    ├── Src/
-    │   ├── main.c
-    │   ├── aes.c
-    │   └── image_data.c
-    └── Inc/
-        ├── main.h
-        ├── aes.h
-        └── image_data.h
-```
+</div>
 
 ---
 
-## Hardware
+## Overview
+
+| | Stage 1 | Stage 2 |
+|---|---|---|
+| **Name** | AES-ECB Demo | Secure Image Sender |
+| **Mode** | AES-128 ECB | AES-128 CBC |
+| **Key** | Hardcoded (learning) | Hardware RNG — unique per boot |
+| **Data** | 16-byte plaintext | 320×240 monochrome image (9600 bytes) |
+| **Output** | UART terminal | Encrypted stream → Python receiver → PNG |
+| **Purpose** | Understand AES block cipher | Full secure embedded-to-host data link |
+
+---
+
+## 🛠 Hardware
 
 | Component | Details |
 |---|---|
-| MCU | STM32F407VETx LQFP100 (ARM Cortex-M4 @ 168 MHz) |
-| SRAM | 192 kB |
-| Flash | 512 kB — 5 WS latency, instruction + data cache enabled |
-| Clock Source | HSE Crystal/Ceramic Resonator → PLL → 168 MHz SYSCLK |
-| RNG | On-chip hardware RNG peripheral (Security category) — activated |
-| UART | USART2 — PA2 (TX), PA3 (RX) — 115200 baud, 8N1 |
-| GPIO | PA6, PA7 — GPIO Output (status indicators) |
-| Debug | SWD — PA13 (SWDIO), PA14 (SWCLK) |
-| Firmware | STM32Cube FW_F4 V1.28.3 |
+| **MCU** | STM32F407VETx LQFP100 — ARM Cortex-M4 @ 168 MHz |
+| **SRAM** | 192 kB |
+| **Flash** | 512 kB — 5WS latency, instruction + data cache enabled |
+| **Clock** | HSE Crystal → PLL → 168 MHz SYSCLK |
+| **RNG** | On-chip hardware RNG — analog noise entropy source |
+| **UART** | USART2 — PA2 (TX), PA3 (RX) — 115200 baud, 8N1 |
+| **GPIO** | PA6, PA7 — status indicators |
+| **Debug** | SWD — PA13 (SWDIO), PA14 (SWCLK) |
+| **Firmware** | STM32Cube FW_F4 V1.28.3 |
 
 ---
 
-## Stage 1 — AES-128 ECB Demo
-
-A minimal proof-of-concept establishing baseline understanding of the AES block cipher on embedded hardware.
-
-### What It Does
+## Repository Structure
 
 ```
-Plaintext (16 bytes)
-        │
-        ▼
-  AES-128 ECB Encrypt  ← key: "STM32CryptoKey!!"
-        │
-        ▼
-  Ciphertext (16 bytes)
-        │
-        ▼
-  AES-128 ECB Decrypt
-        │
-        ▼
-  Recovered Plaintext
-        │
-        ▼
-  USART2 → PC terminal (original / encrypted / decrypted)
+stm32_aes_secure_image_uart/
+│
+├── 01_AES_ECB_Demo/               ← Stage 1: AES-128 ECB baseline
+│   ├── Src/
+│   │   ├── main.c                 — encrypt/decrypt + UART output
+│   │   └── aes.c                  — tiny-AES-c library
+│   └── Inc/
+│       ├── main.h
+│       └── aes.h
+│
+├── 02_Secure_Image_Sender/        ← Stage 2: HW-RNG + CBC image TX
+│   ├── Src/
+│   │   ├── main.c                 — RNG keygen + CBC encrypt + UART stream
+│   │   ├── aes.c
+│   │   └── image_data.c           — 320×240 bitmap stored in Flash
+│   ├── Inc/
+│   │   ├── main.h
+│   │   ├── aes.h
+│   │   └── image_data.h
+│   └── Python/
+│       └── receiver.py            — decrypt + reconstruct image on host PC
+│
+└── docs/
+    └── AES_RND_image_cubemx.pdf   — CubeMX hardware configuration report
 ```
 
-### Key Parameters
+---
+
+##  Stage 1 — AES-128 ECB Demo
+
+> Minimal proof-of-concept to establish baseline understanding of the AES block cipher on embedded hardware.
+
+### Pipeline
+
+```
+ ┌─────────────────────────────────────────┐
+ │         STM32F407 @ 168 MHz             │
+ │                                         │
+ │  Plaintext: "HELLO STM32!!!"            │
+ │         │                               │
+ │         ▼                               │
+ │   AES-128 ECB Encrypt                   │
+ │   key: "STM32CryptoKey!!"               │
+ │         │                               │
+ │         ▼                               │
+ │   Ciphertext (16 bytes raw binary)      │
+ │         │                               │
+ │         ▼                               │
+ │   AES-128 ECB Decrypt                   │
+ │         │                               │
+ │         ▼                               │
+ │   Recovered Plaintext ✓                 │
+ │         │                               │
+ └─────────┼───────────────────────────────┘
+           │ USART2 @ 115200 baud
+           ▼
+      PC Terminal
+  [Original] → [Encrypted] → [Decrypted]
+```
+
+### Parameters
 
 | Parameter | Value |
 |---|---|
-| AES mode | ECB (Electronic Codebook) |
-| Key length | 128-bit (16 bytes) |
+| AES Mode | ECB (Electronic Codebook) |
+| Key | 128-bit hardcoded |
 | Block size | 16 bytes |
-| Baud rate | 115200 |
+| UART | 115200 baud |
 
-> **Note:** ECB mode encrypts each block independently — identical plaintext produces identical ciphertext. Intentionally used here for learning; CBC mode is used in Stage 2 for real security.
+>  **ECB is intentionally used here for learning only.** ECB encrypts each block independently — identical plaintext always produces identical ciphertext, leaking data patterns. Stage 2 fixes this with CBC.
 
 ---
 
-## Stage 2 — Secure Image Sender
+##  Stage 2 — Secure Image Sender
 
-A complete embedded-to-host secure data link — fresh cryptographic key and IV generated on every power-on, image encrypted in CBC mode, streamed over UART, and reconstructed on the host.
+> Complete embedded-to-host secure data link with hardware-generated keys, AES-CBC encryption, and Python-based image reconstruction.
 
-### What It Does
+### Pipeline
 
 ```
-Power-On
-    │
-    ▼
-Hardware RNG → 128-bit AES Key (random, unique per boot)
-Hardware RNG → 128-bit IV     (random, unique per boot)
-    │
-    ▼
-image_data[] (320×240 monochrome bitmap, 9600 bytes in Flash)
-    │
-    ▼
-memcpy → RAM tx_buffer
-    │
-    ▼
-AES-128 CBC Encrypt (key + IV)
-    │
-    ▼
-UART Binary Stream:
-  [16 bytes KEY] → [16 bytes IV] → [9600 bytes CIPHERTEXT]
-    │
-    ▼
-Python Receiver (host PC)
-  ├── Extract KEY (first 16 bytes)
-  ├── Extract IV  (next 16 bytes)
-  ├── AES-CBC Decrypt remaining bytes
-  └── Reconstruct 320×240 bitmap → image file
+ ┌─────────────────────────────────────────────────┐
+ │              STM32F407 @ 168 MHz                │
+ │                                                 │
+ │  Power-On                                       │
+ │      │                                          │
+ │      ▼                                          │
+ │  Hardware RNG ──► 128-bit AES Key  (random)     │
+ │  Hardware RNG ──► 128-bit IV       (random)     │
+ │                   (unique every boot)           │
+ │      │                                          │
+ │      ▼                                          │
+ │  image_data[] in Flash                          │
+ │  320×240 monochrome bitmap = 9600 bytes         │
+ │      │                                          │
+ │      ▼                                          │
+ │  memcpy ──► RAM tx_buffer                       │
+ │      │                                          │
+ │      ▼                                          │
+ │  AES-128 CBC Encrypt (key + IV)                 │
+ │      │                                          │
+ └──────┼──────────────────────────────────────────┘
+        │ USART2 @ 115200 baud
+        ▼
+  ┌──────────┬──────────┬──────────────────────┐
+  │ 16 bytes │ 16 bytes │    9600 bytes        │
+  │   KEY    │    IV    │    CIPHERTEXT        │
+  └──────────┴──────────┴──────────────────────┘
+        │
+        ▼
+ ┌─────────────────────────────────────────────────┐
+ │              Python Receiver (PC)               │
+ │                                                 │
+ │  Read KEY (16 bytes) + IV (16 bytes)            │
+ │  Read CIPHERTEXT (9600 bytes)                   │
+ │      │                                          │
+ │      ▼                                          │
+ │  AES-128 CBC Decrypt                            │
+ │      │                                          │
+ │      ▼                                          │
+ │  numpy.unpackbits ──► 76800 pixels              │
+ │  Reshape ──► 320×240 ──► PNG saved ✓            │
+ └─────────────────────────────────────────────────┘
 ```
 
-### Key Parameters
+### Parameters
 
 | Parameter | Value |
 |---|---|
-| AES mode | CBC (Cipher Block Chaining) |
-| Key length | 128-bit — hardware RNG generated |
-| IV | 128-bit — hardware RNG generated |
-| Image size | 9,600 bytes (320×240 × 1-bit monochrome) |
-| Stream format | KEY → IV → CIPHERTEXT (binary) |
-| Baud rate | 115200 |
+| AES Mode | CBC (Cipher Block Chaining) |
+| Key | 128-bit — on-chip hardware RNG |
+| IV | 128-bit — on-chip hardware RNG |
+| Image | 320×240 monochrome, 9600 bytes in Flash |
+| Stream format | KEY → IV → CIPHERTEXT (raw binary) |
+| UART | 115200 baud |
 
-### Why CBC over ECB?
+###  Why Hardware RNG?
 
-CBC chains each block's encryption to the previous ciphertext block via XOR before encrypting. This means identical plaintext blocks produce different ciphertext — the image structure is completely hidden. Combined with a hardware-RNG key and IV that change every boot, no two transmissions are ever the same.
+The STM32F407 has a dedicated **on-chip hardware RNG peripheral** sourcing entropy from analog noise in the silicon:
 
-### Why Hardware RNG?
+-  No hardcoded keys anywhere in firmware Flash
+-  No software PRNG vulnerabilities
+-  Fresh unique key + IV on every power-on
+-  No two transmissions are ever identical
 
-The STM32F407 has a dedicated on-chip RNG peripheral that sources entropy from analog noise in the silicon. This eliminates the need for a hardcoded or software-derived key — every power cycle produces a cryptographically fresh key and IV with no predictable pattern.
+###  Why CBC over ECB?
+
+CBC XORs each plaintext block with the previous ciphertext block before encrypting — identical plaintext blocks produce **completely different ciphertext**. The image structure is fully hidden in the encrypted stream.
 
 ---
 
 ## Python Receiver
 
-The host-side receiver script is included at `02_Secure_Image_Sender/Python/receiver.py`.
+Included at `02_Secure_Image_Sender/Python/receiver.py`
 
-### What It Does
-
-```
-UART Binary Stream (from STM32)
-        │
-        ├── Read 16 bytes → AES Key
-        ├── Read 16 bytes → AES IV
-        └── Read 9600 bytes → Ciphertext
-                │
-                ▼
-        AES-128 CBC Decrypt
-                │
-                ▼
-        numpy.unpackbits → 76800 pixels
-                │
-                ▼
-        Reshape → 320×240 array
-                │
-                ▼
-        PIL → save as .png
-```
-
-### Requirements
+### Install
 
 ```bash
 pip install pyserial pycryptodome pillow numpy
 ```
 
-### Usage
+### Run
 
 ```bash
-python receiver.py --port COM3           # Windows
-python receiver.py --port /dev/ttyUSB0   # Linux
-python receiver.py --port COM3 --output my_image.png  # custom output name
+python receiver.py --port COM3                               # Windows
+python receiver.py --port /dev/ttyUSB0                       # Linux
+python receiver.py --port COM3 --output decrypted_image.png  # custom name
 ```
 
-### Why the Key and IV Are Sent in the Stream
+---
 
-The STM32 hardware RNG generates a **fresh 128-bit key and IV on every power-on** — there are no hardcoded secrets anywhere in firmware Flash. Since the key changes every boot, the STM32 sends it as the first 16 bytes of the stream so the Python receiver can always decrypt correctly regardless of which boot session produced the ciphertext.
+##  Third Party
+
+| Library | Source | License |
+|---|---|---|
+| tiny-AES-c | https://github.com/kokke/tiny-AES-c | The Unlicense (Public Domain) |
 
 ---
 
-## Third Party
+<div align="center">
 
-**tiny-AES-c**
-Source: https://github.com/kokke/tiny-AES-c
-License: The Unlicense (public domain)
-Used for: AES-128 ECB/CBC software implementation on both stages.
+##  Author
 
----
+**Rohan Kumar Singh**
+B.Tech ECE — Babasaheb Bhimrao Ambedkar University, Lucknow
+Embedded Systems Intern — BIT Mesra (2025)
 
-## Author
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge&logo=linkedin)](https://linkedin.com/in/your-link)
+[![Email](https://img.shields.io/badge/Email-rohankumar17362@gmail.com-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:rohankumar17362@gmail.com)
 
-**Rohan Kumar Singh** — B.Tech ECE, Babasaheb Bhimrao Ambedkar University, Lucknow
-Embedded Systems Intern, BIT Mesra (2025)
-[LinkedIn](https://linkedin.com/in/your-link) | rohankumar17362@gmail.com
+</div>
